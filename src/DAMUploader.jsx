@@ -7,19 +7,56 @@ import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css";
 
 registerPlugin(FilePondPluginImageExifOrientation, FilePondPluginImagePreview);
 
-function DAMUploader({ callback, error, label }) {
+function DAMUploader({ callback, callbackError, label, types }) {
   const [pond, setPond] = useState(null);
+  const [dynamicLabel, setDynamicLabel] = useState(label);
 
   const processMux = (file) => {
-    //  TODO: Implement Mux upload
+    const MUX_TOKEN_ID = "c49fdcf0-8a88-48d4-b309-755819050762";
+    const MUX_TOKEN_SECRET =
+      "E/T7eqoIyw+JDozVW+0EupiGIoJjG1fWelSPETE6eOGOF7swivFb05905fbhzunpa6Anv6AYBXo";
 
+    const url = "https://api.mux.com/video/v1/assets";
+    const data = {
+      input: file,
+      playback_policy: ["public"],
+    };
+
+    let request = new XMLHttpRequest();
+    request.open("POST", url, true);
+    request.setRequestHeader("Content-Type", "application/json");
+    request.setRequestHeader(
+      "Authorization",
+      "Basic " + btoa(MUX_TOKEN_ID + ":" + MUX_TOKEN_SECRET)
+    );
+
+    request.onload = function () {
+      if (this.status >= 200 && this.status < 400) {
+        console.log(JSON.parse(this.response));
+      } else {
+        console.error("Server returned an error");
+      }
+    };
+
+    request.onerror = function () {
+      console.error("Connection error");
+    };
+
+    request.send(JSON.stringify(data));
     return request;
+  };
+
+  const showError = (msg) => {
+    setDynamicLabel(msg);
+    setTimeout(() => {
+      setDynamicLabel(label);
+    }, 1300);
   };
 
   const processByteScale = (file) => {
     const baseUrl = "https://api.bytescale.com";
     const accountId = "kW15bg4";
-    const path = `/v2/accounts/${accountId}/uploads/binary`;
+    const path = `/v2/accounts/${accountId}/uploads/form_data`;
     const apiKey = "public_kW15bg4CD9NgVAiipcNKZ5LZCTHD";
     const query = {
       folderPath: "/wynter",
@@ -38,21 +75,30 @@ function DAMUploader({ callback, error, label }) {
 
     let url = `${baseUrl}${path}?${querystring}`;
 
+    const formData = new FormData();
+    const hasExtension = /\.[0-9a-z]+$/i.test(file.name);
+    const fileName = hasExtension
+      ? file.name
+      : `${file.name}.${file.type.split("/")[1]}`;
+    formData.append("file", file, fileName);
+
     let request = new XMLHttpRequest();
     request.open("POST", url, true);
     request.setRequestHeader("Authorization", `Bearer ${apiKey}`);
-
-    const formData = new FormData();
-    formData.append("file", file, file.name);
 
     request.onreadystatechange = function () {
       if (request.readyState === 4) {
         if (request.status >= 200 && request.status < 300) {
           const data = JSON.parse(request.responseText);
-          callback(data.fileUrl);
+          callback(data.files);
           console.log(`Success:`, data);
+
+          if (file.type.includes("video") || file.type.includes("audio")) {
+            processMux(data.files[0].fileUrl);
+          }
         } else {
-          error(request.statusText);
+          callbackError(request.statusText);
+          showError("Something went wrong...");
           console.error(`Error: ${request.statusText}`);
         }
       }
@@ -72,13 +118,7 @@ function DAMUploader({ callback, error, label }) {
     const formData = new FormData();
     formData.append(fieldName, file, file.name);
 
-    let request;
-
-    if (file.type.includes("video") || file.type.includes("audio")) {
-      request = processMux(file);
-    } else {
-      request = processByteScale(file);
-    }
+    let request = processByteScale(file);
 
     request.upload.onprogress = (e) => {
       progress(e.lengthComputable, e.loaded, e.total);
@@ -88,7 +128,8 @@ function DAMUploader({ callback, error, label }) {
       if (request.status >= 200 && request.status < 300) {
         load(request.responseText);
       } else {
-        error("Something went wrong when uploading the file.");
+        callbackError("Something went wrong...");
+        showError("Something went wrong...");
       }
     };
 
@@ -131,8 +172,10 @@ function DAMUploader({ callback, error, label }) {
     );
     if (Math.floor(response.status / 100) !== 2) {
       const result = await response.json();
-      error(JSON.stringify(result));
-      throw new Error(`Bytescale API Error: ${JSON.stringify(result)}`);
+      const errorMessage = JSON.stringify(result);
+      callbackError(errorMessage);
+      showError("Something went wrong...");
+      throw new Error(`Bytescale API Error: ${errorMessage}`);
     }
 
     return response;
@@ -153,10 +196,7 @@ function DAMUploader({ callback, error, label }) {
       name="damuploader"
       credits={false}
       ref={(ref) => setPond(ref)}
-      labelIdle={
-        label ||
-        'Drag & Drop your files or <span class="filepond--label-action">Browse</span>'
-      }
+      labelIdle={dynamicLabel}
       allowMultiple={false}
       dropOnPage={true}
       dropValidation={true}
@@ -172,17 +212,24 @@ function DAMUploader({ callback, error, label }) {
           transfer,
           options
         ) => {
-          return serverUpload(
-            fieldName,
-            file,
-            metadata,
-            load,
-            error,
-            progress,
-            abort,
-            transfer,
-            options
-          );
+          if (types.includes(file.type.split("/")[0])) {
+            return serverUpload(
+              fieldName,
+              file,
+              metadata,
+              load,
+              error,
+              progress,
+              abort,
+              transfer,
+              options
+            );
+          } else {
+            callbackError("Invalid file type.");
+            abort();
+            pond.removeFile();
+            showError("Invalid file type.");
+          }
         },
         revert: (uniqueFileId, load, error) => {
           revertFile(uniqueFileId, load, error);

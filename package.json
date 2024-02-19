@@ -10,12 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@bytescale/sdk": "^3.31.1",
+    "@mux/mux-player-react": "^2.3.3",
+    "@mux/mux-uploader-react": "^1.0.0-beta.15",
     "filepond": "^4.30.6",
     "filepond-plugin-image-exif-orientation": "^1.0.11",
     "filepond-plugin-image-preview": "^4.6.12",
+    "mux-embed": "^5.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-filepond": "^7.1.2"
+    "react-filepond": "^7.1.2",
+    "react-h5-audio-player": "^3.9.1",
+    "react-image": "^4.1.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.55",
